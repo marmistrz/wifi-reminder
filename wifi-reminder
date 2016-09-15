@@ -1,0 +1,44 @@
+#!/bin/bash
+
+APPNAME="Wi-Fi reminder"
+ICON="network-wireless"
+TIMEOUT=7000
+CHECK_INTERVAL=300  # in seconds
+TRANSFER_BOUND=5  # in kB
+
+abort() {
+    echo "$@"
+    exit 1
+}
+
+if [[ $# -ne 1 || "$1" == "-h" ]]; then
+    abort "USAGE: wifi-reminder [iface]"
+fi
+
+IFACE="$1"
+
+notify() {
+    notify-send -a "$APPNAME" -i "$ICON" -t "$TIMEOUT" \
+        "The network transfer for interface $IFACE is very low" \
+        "It equals exactly $1 kB/s.\nConsider disabling the wireless connection"
+}
+
+# Check for presense of utilities
+UTILS="vnstat"
+for util in $UTILS; do
+	command -v "$util" > /dev/null || abort "$util not found"
+done
+
+# the vnstat courtesy of shivams@unix.stackexchange
+while true; do
+    output=$(vnstat -ru 0 -tr $CHECK_INTERVAL -i "$IFACE")
+    downSpeed=$(echo "$output" | grep rx | grep -oP "\d+\.\d+")
+    upSpeed=$(echo "$output" | grep tx | grep -oP "\d+\.\d+")
+
+    transfer=$(echo "$downSpeed" "$upSpeed" | awk '{print $1 + $2}')
+    transferSmall=$(echo "$transfer < $TRANSFER_BOUND" | bc -l)  # 1 if true, 0 if false
+
+    if [[ "$transferSmall" == "1" ]]; then
+        notify "$transfer"
+    fi
+done
